@@ -36,7 +36,7 @@ An end-to-end data project that examines how national income relates to under-5 
 - **Success criteria:** A clean, reproducible dataset; documented statistical evidence; an interactive dashboard that allows non-technical users to explore the findings.
 
 ### 3.2 Data Understanding
-- **Sources:** **[e.g. World Bank World Development Indicators: GDP per capita, population, under-5 mortality rate, life expectancy at birth. Confirm source, download date and licence.]**
+- **Sources:** **[ World Bank Indicators: NY.GDP.PCAP.CD, SP.DYN.LE00.IN, SH.DYN.MORT downloaded October 2026 under CC-BY 4.0 license).**
 - **Initial checks:** shape, data types, missing values per indicator, duplicate country-year records, and coverage by year and country.
 - **Observations:** **[e.g. aggregates (regions, income groups) mixed with countries; missing GDP values in early years; indicators with different year coverage.]**
 
@@ -47,15 +47,15 @@ Steps carried out in the notebook:
 2. **Reshaping:** converted from wide format (one column per year) to long format (one row per country-year).
 3. **Merging:** joined indicators on `Country Code` and `year`.
 4. **Filtering:** removed regional and income-group aggregates so that only countries remain.
-5. **Cleaning:** standardised column names, corrected data types, handled missing values by **[dropping / imputing / leaving as missing]**, and removed duplicates.
-6. **Feature engineering:** created `gdp_quartile` (Q1 lowest to Q4 highest) from `gdp_per_capita` using **[quartiles computed across all rows / within each year; confirm]**.
+5. **Cleaning:** standardised column names, corrected data types, handled missing values by droping them since guessing values would mean misrepresentation, and removed duplicates.
+6. **Feature engineering:** created `gdp_quartile` (Q1 lowest to Q4 highest) gdp_quartile was computed globally across all 1960–2024 rows using pd.qcut
 7. **Export:** saved the final dataset to `clean_data.csv`.
 
 ### 3.4 Modelling and Analysis
 - **Descriptive statistics:** medians are used throughout because the indicators are skewed.
 - **Distributions:** histograms and box plots of each indicator by GDP quartile.
-- **Relationships:** scatter plots and correlations between income, child mortality and life expectancy **[state method, e.g. Pearson/Spearman; log scale for GDP]**.
-- **Hypothesis tests:** **[e.g. a test comparing child mortality between Q1 and Q4; state the test, null hypothesis, significance level and result]**.
+- **Relationships:** scatter plots and correlations between income, child mortality and life expectancy 
+- **Hypothesis tests:** One-way ANOVA comparing life expectancy across GDP quartiles, $p < 0.05$). H0: mean log child mortality is the same in all four quartiles.**.
 
 ### 3.5 Evaluation
 Key findings:
@@ -64,9 +64,8 @@ Key findings:
 - The lowest-income quartile (Q1) started at roughly 195 deaths per 1,000 live births and has fallen to roughly 50 by 2024.
 - The highest-income quartile (Q4) has remained below roughly 10 per 1,000 for most of the period.
 - The gap between the lowest and highest quartiles has narrowed substantially but has not closed.
-- **[Add the hypothesis test results and correlation values from your notebook.]**
 
-Limitations: **[e.g. missing data in early years; GDP quartile grouping hides within-group variation; correlation does not imply causation; the 1970s spike in Q4 reflects few reporting countries in that quartile and year]**.
+Limitations: **missing data in early years; GDP quartile grouping hides within-group variation; correlation does not imply causation; the 1970s spike in Q4 reflects few reporting countries in that quartile and year**.
 
 ### 3.6 Deployment
 The analysis was converted into a Streamlit app (`app.py`) and deployed **[on Streamlit Community Cloud / locally; **(http://localhost:8501)**.
@@ -80,9 +79,11 @@ The analysis was converted into a Streamlit app (`app.py`) and deployed **[on St
 | Tab | Contents |
 |---|---|
 | Overview | Key metrics (rows, countries, median under-5 mortality, median life expectancy); line chart of median under-5 mortality over time by GDP quartile; filtered data table; CSV download |
-| Distributions | 
-| Relationships | 
-| Hypothesis tests | 
+| Distributions | Under-5 mortality (per 1,000) Right-skewed: the mean sits above the median, so the median describes a typical country-year better than the mean.
+life expectancy (years) Left-skewed: the mean sits below the median.
+GDP per capita (US$) Right-skewed: the mean sits above the median, so the median describes a typical country-year better than the mean.
+| Relationships | I used a scatter plot to show log GDP per capita against Life expectancy (years)
+| Hypothesis tests | I used one-way ANOVA, Paired t-test, CHi-square test and A/B style comparison
 
 **Downloads:** the Overview tab exports the filtered data as CSV, either the displayed columns or all columns.
 
@@ -93,7 +94,7 @@ The analysis was converted into a Streamlit app (`app.py`) and deployed **[on St
 ```bash
 # 1. Clone the repository
 git clone https://github.com/abigailnkimani-cyber/end_module_capstone.git
-cd [repository_folder]
+cd end_module_capstone
 
 # 2. Create and activate a virtual environment
 python -m venv venv
@@ -114,7 +115,7 @@ To explore the analysis, open the notebook with `jupyter notebook capstone.ipynb
 
 ## 6. Deploying to Streamlit Community Cloud
 
-Live app: **[URL]**
+Live app: (https://endmodulecapstone-gbrncegpkwpvqvjkjukejb.streamlit.app/)
 
 ---
 
@@ -128,10 +129,16 @@ matplotlib
 seaborn
 scipy
 ```
-
+```
+## 8. Article
+Read the full write-up on [Substack](https://abnk.substack.com/p/do-richer-countries-really-keep-more?r=6xvpog&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true).
 
 ---
 
-## 8. Author
+## 9. Presentation
+Presentation slides and project documentation are located in the `docs/` directory.
 
-Abigail Kimani — Zindua School
+---
+
+## 10. Author
+**Abigail Kimani** — *Zindua School Data Analytics Capstone*
