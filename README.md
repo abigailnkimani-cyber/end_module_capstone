@@ -15,17 +15,16 @@ An end-to-end data project that examines how national income relates to under-5 
 ---
 
 ## 2. Repository Structure
-
-```
 .
 ├── app.py                      # Streamlit application
-├── [notebook_name].ipynb       # CRISP-DM analysis notebook
+├── capstone.ipynb              # CRISP-DM analysis notebook
 ├── data/
-│   ├── raw/                    # Source files as downloaded
-│   └── clean_data.csv        # Cleaned, merged dataset used by the app
+│   ├── raw/                    # Source files as downloaded (World Bank)
+│   └── clean_data.csv          # Cleaned, merged dataset used by the app
+├── docs/
+│   └── end_module_capstone.pdf # Presentation slides and project overview
 ├── requirements.txt
 └── README.md
-```
 
 ---
 
@@ -129,14 +128,13 @@ matplotlib
 seaborn
 scipy
 ```
-```
 ## 8. Article
 Read the full write-up on [Substack](https://abnk.substack.com/p/do-richer-countries-really-keep-more?r=6xvpog&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true).
 
 ---
 
 ## 9. Presentation
-Presentation slides and project documentation are located in the `docs/` directory.
+Presentation slides and project documentation are part of the files pushed to github.
 
 ---
 
