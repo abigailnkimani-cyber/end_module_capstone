@@ -16,7 +16,6 @@ An end-to-end data project that examines how national income relates to under-5 
 
 ## 2. Repository Structure
 
-
 .
 ├── app.py                      # Streamlit application
 ├── capstone.ipynb              # CRISP-DM analysis notebook
