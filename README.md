@@ -99,10 +99,7 @@ cd end_module_capstone
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 
-# 3. Install dependencies
-uv pip freeze > requirements.txt
-
-# 4. Run the app
+# 3. Run the app
 streamlit run app.py
 ```
 
@@ -134,7 +131,7 @@ Read the full write-up on [Substack](https://abnk.substack.com/p/do-richer-count
 ---
 
 ## 9. Presentation
-Presentation slides and project documentation are part of the files pushed to github.
+Presentation slides: https://eu.wps.com/cms/docs/d/cbOakhgqDf8cJXMu?platform=pc&refer=copylink
 
 ---
 
