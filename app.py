@@ -1,16 +1,44 @@
+import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy import stats
 
 st.set_page_config(page_title="Income, Child Mortality and Life Expectancy", layout="wide")
+alt.data_transformers.disable_max_rows()  # Altair's default 5,000-row cap is too low for country-year data
 
 QUARTILES = ["Q1 (lowest)", "Q2", "Q3", "Q4 (highest)"]
-ALPHA = 0.05
-TARGET = 25  # UN SDG target: 25 or fewer under-5 deaths per 1,000 live births
-LIFE_CUTOFF = 70  # life expectancy benchmark in years
+QUARTILE_COLORS = ["#e4572e", "#f2a541", "#4ea8de", "#1f4e79"]
+QUARTILE_SCALE = alt.Scale(domain=QUARTILES, range=QUARTILE_COLORS)
+
+# styling
+st.markdown(
+    """
+    <style>
+    .block-container {padding-top: 2rem; max-width: 1300px;}
+    .hero {
+        background: linear-gradient(135deg, #1f4e79 0%, #2a9d8f 100%);
+        padding: 1.5rem 1.8rem; border-radius: 16px; color: white; margin-bottom: 1.2rem;
+    }
+    .hero h1 {color: white; margin: 0; font-size: 2rem; padding: 0;}
+    .hero p {margin: .4rem 0 0; opacity: .92; font-size: .95rem;}
+    [data-testid="stMetric"] {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 12px; padding: .8rem 1rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {gap: .5rem;}
+    .stTabs [data-baseweb="tab"] {font-weight: 600; padding: .5rem 1rem;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def style(chart, height=320):
+    return (chart.properties(height=height)
+            .configure_view(stroke=None)
+            .configure_axis(labelFontSize=11, titleFontSize=12, gridColor="#8883", domainColor="#8886")
+            .configure_legend(labelFontSize=11, titleFontSize=12, orient="top"))
 
 
 # data
@@ -24,76 +52,10 @@ def load_data():
     return df
 
 
-def fmt_p(p):
-    if p == 0:
-        return "< 1e-300 (below floating-point precision)"
-    return f"{p:.3g}"
-
-
-def decision(p):
-    return "Reject H0" if p < ALPHA else "Fail to reject H0"
-
-
-#  tests (always on the full dataset)
-@st.cache_data
-def run_anova(df, col):
-    groups = [g[col].values for _, g in df.groupby("gdp_quartile", observed=True)]
-    k, n = len(groups), len(df)
-    f, p = stats.f_oneway(*groups)
-    grand = df[col].mean()
-    eta_sq = sum(len(g) * (g.mean() - grand) ** 2 for g in groups) / ((df[col] - grand) ** 2).sum()
-    lev = stats.levene(*groups)
-    return dict(f=f, p=p, eta_sq=eta_sq, df1=k - 1, df2=n - k, n=n, levene_p=lev.pvalue)
-
-
-@st.cache_data
-def run_paired(df):
-    pair = (df[df["year"].isin([2000, 2024])]
-            .pivot(index="Country Code", columns="year", values="log_mortality")
-            .dropna())
-    t, p = stats.ttest_rel(pair[2000], pair[2024])
-    diff = pair[2000] - pair[2024]  # positive = mortality fell
-    return dict(t=t, p=p, n=len(pair), d=diff.mean() / diff.std(ddof=1),
-                share_fell=(diff > 0).mean(), ratio=float(np.exp(-diff.mean())))
-
-
-@st.cache_data
-def run_ab(df):
-    latest = df[df["year"] == 2024].copy()
-    above = latest["gdp_per_capita"] >= latest["gdp_per_capita"].median()
-    hit = latest["child_mortality"] <= TARGET
-    xA, nA = int(hit[~above].sum()), int((~above).sum())
-    xB, nB = int(hit[above].sum()), int(above.sum())
-    pA, pB = xA / nA, xB / nB
-    pool = (xA + xB) / (nA + nB)
-    z = (pB - pA) / np.sqrt(pool * (1 - pool) * (1 / nA + 1 / nB))
-    p = 2 * stats.norm.sf(abs(z))
-    se = np.sqrt(pA * (1 - pA) / nA + pB * (1 - pB) / nB)
-    _, p_fisher = stats.fisher_exact([[xA, nA - xA], [xB, nB - xB]])
-    return dict(xA=xA, nA=nA, xB=xB, nB=nB, pA=pA, pB=pB, z=z, p=p, p_fisher=p_fisher,
-                diff=pB - pA, lo=(pB - pA) - 1.96 * se, hi=(pB - pA) + 1.96 * se,
-                min_cell=min(xA, nA - xA, xB, nB - xB))
-
-
-@st.cache_data
-def run_chi2(df):
-    latest = df[df["year"] == 2024].copy()
-    latest["quartile"] = pd.qcut(latest["gdp_per_capita"], 4, labels=QUARTILES)
-    latest["long_life"] = np.where(latest["life_expectancy"] >= LIFE_CUTOFF,
-                                   f"{LIFE_CUTOFF} or more", f"under {LIFE_CUTOFF}")
-    ct = pd.crosstab(latest["quartile"], latest["long_life"])
-    chi2, p, dof, expected = stats.chi2_contingency(ct)
-    v = np.sqrt(chi2 / (len(latest) * (min(ct.shape) - 1)))
-    return dict(ct=ct, pct=ct.div(ct.sum(axis=1), axis=0), chi2=chi2, p=p, dof=dof, v=v,
-                n=len(latest), min_expected=expected.min())
-
-
 df = load_data()
 
-#  sidebar filters
+# sidebar filters
 st.sidebar.header("Filters")
-st.sidebar.caption("Filters apply to the Overview, Distributions and Relationships tabs. "
-                   "The hypothesis tests always use the full dataset.")
 year_range = st.sidebar.slider("Year range", int(df["year"].min()), int(df["year"].max()),
                                (int(df["year"].min()), int(df["year"].max())))
 quartiles = st.sidebar.multiselect("GDP per capita quartile", QUARTILES, default=QUARTILES)
@@ -103,19 +65,25 @@ view = df[df["year"].between(*year_range) & df["gdp_quartile"].isin(quartiles)]
 if countries:
     view = view[view["Country Name"].isin(countries)]
 
-#  header
-st.title("Income, Child Mortality and Life Expectancy")
-st.caption("World Bank World Development Indicators: life expectancy, under-5 mortality, "
-           "GDP per capita and population, joined on country code and year.")
+# header
+st.markdown(
+    """
+    <div class="hero">
+        <h1>Income, Child Mortality and Life Expectancy</h1>
+        <p>World Bank World Development Indicators: life expectancy, under-5 mortality,
+        GDP per capita and population, joined on country code and year.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if view.empty:
     st.warning("No data matches these filters. Widen the year range or quartile selection.")
     st.stop()
 
-tab_overview, tab_dist, tab_rel, tab_tests = st.tabs(
-    ["Overview", "Distributions", "Relationships", "Hypothesis tests"])
+tab_overview, tab_dist, tab_rel = st.tabs(["Overview", "Distributions", "Relationships"])
 
-#  overview
+# overview
 with tab_overview:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Rows", f"{len(view):,}")
@@ -123,70 +91,85 @@ with tab_overview:
     c3.metric("Median under-5 mortality", f"{view['child_mortality'].median():.1f} per 1,000")
     c4.metric("Median life expectancy", f"{view['life_expectancy'].median():.1f} years")
 
-    st.subheader("Median under-5 mortality over time, by GDP quartile")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.lineplot(data=view, x="year", y="child_mortality", hue="gdp_quartile",
-                 hue_order=[q for q in QUARTILES if q in quartiles],
-                 estimator="median", errorbar=None, ax=ax)
-    ax.set_ylabel("Deaths per 1,000 live births", fontsize=9)
-    ax.set_xlabel("Year", fontsize=9)
-    ax.tick_params(labelsize=8)
-    ax.legend(title="GDP quartile", loc="upper left", bbox_to_anchor=(1.02, 1),
-              fontsize=8, title_fontsize=9, frameon=False)
-    fig.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
+    with st.container(border=True):
+        st.subheader("Median under-5 mortality over time, by GDP quartile")
+        trend = (view.groupby(["year", "gdp_quartile"], observed=True)["child_mortality"]
+                 .median().reset_index())
+        trend["gdp_quartile"] = trend["gdp_quartile"].astype(str)
+        line = alt.Chart(trend).mark_line(strokeWidth=2.5, point=alt.OverlayMarkDef(size=35)).encode(
+            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d")),
+            y=alt.Y("child_mortality:Q", title="Deaths per 1,000 live births"),
+            color=alt.Color("gdp_quartile:N", title="GDP quartile", scale=QUARTILE_SCALE),
+            tooltip=[alt.Tooltip("year:Q", title="Year", format="d"),
+                     alt.Tooltip("gdp_quartile:N", title="Quartile"),
+                     alt.Tooltip("child_mortality:Q", title="Median mortality", format=".1f")],
+        )
+        st.altair_chart(style(line, 340), use_container_width=True)
 
-    st.subheader("Data")
-    shown = ["Country Name", "Country Code", "year", "life_expectancy", "child_mortality",
-             "gdp_per_capita", "population", "gdp_quartile"]
-    st.dataframe(view[shown].reset_index(drop=True), height=300)
+    with st.container(border=True):
+        st.subheader("Data")
+        shown = ["Country Name", "Country Code", "year", "life_expectancy", "child_mortality",
+                 "gdp_per_capita", "population", "gdp_quartile"]
+        st.dataframe(view[shown].reset_index(drop=True), height=300, use_container_width=True)
 
-    download_choice = st.radio(
-        "Download option",
-        ["Displayed columns", "All columns"],
-        horizontal=True,
-    )
-    export_df = view[shown] if download_choice == "Displayed columns" else view
-    st.download_button(
-        "Download filtered data (CSV)",
-        export_df.to_csv(index=False),
-        file_name="filtered_data.csv",
-        mime="text/csv",
-    )
+        download_choice = st.radio(
+            "Download option",
+            ["Displayed columns", "All columns"],
+            horizontal=True,
+        )
+        export_df = view[shown] if download_choice == "Displayed columns" else view
+        st.download_button(
+            "Download filtered data (CSV)",
+            export_df.to_csv(index=False),
+            file_name="filtered_data.csv",
+            mime="text/csv",
+        )
 
-#  distributions
+# distributions
 with tab_dist:
     labels = {"child_mortality": "Under-5 mortality (per 1,000)",
               "life_expectancy": "Life expectancy (years)",
               "gdp_per_capita": "GDP per capita (US$)",
               "log_gdp": "Log GDP per capita"}
-    var = st.selectbox("Variable", list(labels), format_func=lambda v: labels[v])
-    x = view[var]
+    with st.container(border=True):
+        var = st.selectbox("Variable", list(labels), format_func=lambda v: labels[v])
+        x = view[var]
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Mean", f"{x.mean():,.2f}")
-    c2.metric("Median", f"{x.median():,.2f}")
-    c3.metric("Skewness", f"{x.skew():.2f}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Mean", f"{x.mean():,.2f}")
+        c2.metric("Median", f"{x.median():,.2f}")
+        c3.metric("Skewness", f"{x.skew():.2f}")
 
     left, right = st.columns(2)
     with left:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.histplot(x, bins=40, kde=True, ax=ax)
-        ax.axvline(x.mean(), color="red", linestyle="--", label=f"mean {x.mean():,.1f}")
-        ax.axvline(x.median(), color="green", linestyle="--", label=f"median {x.median():,.1f}")
-        ax.set_xlabel(labels[var])
-        ax.legend()
-        st.pyplot(fig)
-        plt.close(fig)
+        with st.container(border=True):
+            st.subheader("Histogram")
+            hist = alt.Chart(view[[var]]).mark_bar(color="#4ea8de", opacity=0.9).encode(
+                x=alt.X(f"{var}:Q", bin=alt.Bin(maxbins=40), title=labels[var]),
+                y=alt.Y("count()", title="Count"),
+            )
+            lines_df = pd.DataFrame({"stat": ["Mean", "Median"], "value": [x.mean(), x.median()]})
+            rules = alt.Chart(lines_df).mark_rule(strokeWidth=2.5, strokeDash=[6, 4]).encode(
+                x="value:Q",
+                color=alt.Color("stat:N", title=None,
+                                scale=alt.Scale(domain=["Mean", "Median"],
+                                                range=["#e4572e", "#2a9d8f"])),
+                tooltip=[alt.Tooltip("stat:N", title="Statistic"),
+                         alt.Tooltip("value:Q", title="Value", format=",.2f")],
+            )
+            st.altair_chart(style(hist + rules, 340), use_container_width=True)
     with right:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.boxplot(data=view, x="gdp_quartile", y=var,
-                    order=[q for q in QUARTILES if q in quartiles], ax=ax)
-        ax.set_xlabel("GDP per capita quartile")
-        ax.set_ylabel(labels[var])
-        st.pyplot(fig)
-        plt.close(fig)
+        with st.container(border=True):
+            st.subheader("By GDP quartile")
+            box_data = view[["gdp_quartile", var]].copy()
+            box_data["gdp_quartile"] = box_data["gdp_quartile"].astype(str)
+            box = alt.Chart(box_data).mark_boxplot(extent=1.5, size=45).encode(
+                x=alt.X("gdp_quartile:N", sort=QUARTILES, title="GDP per capita quartile",
+                        axis=alt.Axis(labelAngle=0)),
+                y=alt.Y(f"{var}:Q", title=labels[var]),
+                color=alt.Color("gdp_quartile:N", scale=QUARTILE_SCALE, legend=None),
+            )
+            st.altair_chart(style(box, 340), use_container_width=True)
 
     if x.skew() > 0.5:
         st.info("Right-skewed: the mean sits above the median, so the median describes a typical "
@@ -196,122 +179,45 @@ with tab_dist:
     else:
         st.info("Roughly symmetric: the mean and median are close.")
 
-#  relationships
+# relationships
 with tab_rel:
-    st.subheader("Log GDP per capita vs life expectancy")
-    fig, ax = plt.subplots(figsize=(9, 5))
-    sns.scatterplot(data=view, x="log_gdp", y="life_expectancy", hue="decade",
-                    palette="viridis", alpha=0.5, s=18, ax=ax)
-    ax.set_xlabel("Log GDP per capita")
-    ax.set_ylabel("Life expectancy (years)")
-    st.pyplot(fig)
-    plt.close(fig)
+    with st.container(border=True):
+        st.subheader("Log GDP per capita vs life expectancy")
+        scatter = alt.Chart(view[["Country Name", "year", "decade", "log_gdp", "life_expectancy"]]).mark_circle(
+            size=40, opacity=0.55).encode(
+            x=alt.X("log_gdp:Q", title="Log GDP per capita", scale=alt.Scale(zero=False)),
+            y=alt.Y("life_expectancy:Q", title="Life expectancy (years)", scale=alt.Scale(zero=False)),
+            color=alt.Color("decade:O", title="Decade", scale=alt.Scale(scheme="viridis")),
+            tooltip=[alt.Tooltip("Country Name:N", title="Country"),
+                     alt.Tooltip("year:Q", title="Year", format="d"),
+                     alt.Tooltip("log_gdp:Q", title="Log GDP", format=".2f"),
+                     alt.Tooltip("life_expectancy:Q", title="Life expectancy", format=".1f")],
+        ).interactive()
+        st.altair_chart(style(scatter, 420), use_container_width=True)
 
-    st.subheader("Median under-5 mortality by decade and GDP quartile")
-    pivot = view.pivot_table(index="gdp_quartile", columns="decade", values="child_mortality",
-                            aggfunc="median", observed=True)
-    fig, ax = plt.subplots(figsize=(9, 3.5))
-    sns.heatmap(pivot, annot=True, fmt=".0f", cmap="YlOrRd", ax=ax)
-    ax.set_xlabel("Decade")
-    ax.set_ylabel("GDP per capita quartile")
-    st.pyplot(fig)
-    plt.close(fig)
-
-#  hypothesis tests
-with tab_tests:
-    st.caption(f"All tests use alpha = {ALPHA} and the full cleaned dataset ({len(df):,} rows), "
-               "regardless of the sidebar filters.")
-
-    # ANOVA: child mortality
-    a = run_anova(df, "log_mortality")
-    st.header("1. One-way ANOVA: child mortality across GDP quartiles")
-    st.markdown("**H0:** mean log child mortality is the same in all four GDP quartiles.  \n"
-                "**H1:** at least one quartile has a different mean.")
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"F({a['df1']}, {a['df2']})", f"{a['f']:,.1f}")
-    c2.metric("p-value", fmt_p(a["p"]))
-    c3.metric("Eta-squared", f"{a['eta_sq']:.2f}")
-    medians = df.groupby("gdp_quartile", observed=True)["child_mortality"].median().round(1)
-    st.write(f"**Decision:** {decision(a['p'])} at alpha = {ALPHA}. "
-             f"Median mortality by quartile (per 1,000): "
-             + ", ".join(f"{q} {v}" for q, v in medians.items()) + ".")
-    st.caption(f"Levene's test for equal variances: p = {fmt_p(a['levene_p'])}. Variances differ, but groups are "
-               "nearly equal in size, so ANOVA is reasonably robust.")
-    with st.expander("What the p-value is not"):
-        st.write("It is not the probability that H0 is true or that the result happened by chance, and it "
-                 "does not say how big the difference is: the size comes from eta-squared and the medians. "
-                 "It does not show that income causes lower mortality. Countries repeat across years, so "
-                 "the rows are not independent and the p-value looks more certain than it is.")
-
-    
-    #  paired t-test
-    t = run_paired(df)
-    st.header("2. Paired t-test: child mortality, 2000 vs 2024")
-    st.markdown("**H0:** the mean change in log child mortality between 2000 and 2024 is zero.  \n"
-                "**H1:** the mean change is not zero.")
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"t({t['n'] - 1})", f"{t['t']:.1f}")
-    c2.metric("p-value", fmt_p(t["p"]))
-    c3.metric("Cohen's d", f"{t['d']:.2f}")
-    st.write(f"**Decision:** {decision(t['p'])} at alpha = {ALPHA}. Based on {t['n']} countries with data in "
-             f"both years, {t['share_fell']:.0%} fell, and a typical country's 2024 mortality is about "
-             f"{t['ratio']:.0%} of its 2000 level.")
-    with st.expander("What the p-value is not"):
-        st.write("It is not the probability that H0 is true or that the fall happened by chance, and it "
-                 "does not say how big the fall was: the size comes from Cohen's d and the share of "
-                 "countries that fell. It says nothing about why mortality fell. Only countries with data "
-                 "in both years are included.")
-
-    #  chi-square
-    c = run_chi2(df)
-    st.header(f"3. Chi-square test: income group and life expectancy of {LIFE_CUTOFF}+ (2024)")
-    st.markdown(f"**H0:** GDP per capita quartile and life expectancy category ({LIFE_CUTOFF} or more vs under "
-                f"{LIFE_CUTOFF}) are independent.  \n"
-                "**H1:** they are associated.")
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"Chi-square({c['dof']})", f"{c['chi2']:.1f}")
-    c2.metric("p-value", fmt_p(c["p"]))
-    c3.metric("Cramer's V", f"{c['v']:.2f}")
-    st.write(f"**Decision:** {decision(c['p'])} at alpha = {ALPHA}. Based on {c['n']} countries in 2024.")
-    st.dataframe(c["ct"])
-    st.caption("Row shares (proportion of each quartile in each life expectancy category):")
-    st.dataframe(c["pct"].round(2))
-    st.caption(f"Smallest expected count: {c['min_expected']:.1f} (the test needs 5 or more).")
-    with st.expander("What the p-value is not"):
-        st.write("It is not the probability that H0 is true or that the association is due to chance, and it "
-                 "does not say how strong the association is: the strength comes from Cramer's V and the row "
-                 f"shares. It does not show that income causes longer life or say which quartiles differ. The "
-                 f"{LIFE_CUTOFF}-year cutoff turns a numeric variable into two categories and loses detail, "
-                 f"and the result uses 2024 only.")
-
-    #  A/B two-proportion z-test
-    b = run_ab(df)
-    st.header("4. A/B-style comparison: richer vs poorer half (2024)")
-    st.markdown(f"Groups: A = countries below the median GDP per capita, B = countries at or above it. "
-                f"Metric: share with under-5 mortality of {TARGET} or fewer per 1,000.  \n"
-                "**H0:** the share meeting the target is the same in both groups.  \n"
-                "**H1:** the shares differ.")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("A: below median", f"{b['pA']:.0%}", f"{b['xA']} of {b['nA']}", delta_color="off")
-    c2.metric("B: above median", f"{b['pB']:.0%}", f"{b['xB']} of {b['nB']}", delta_color="off")
-    c3.metric("z", f"{b['z']:.2f}")
-    c4.metric("p-value", fmt_p(b["p"]))
-    st.write(f"**Decision:** {decision(b['p'])} at alpha = {ALPHA}. The difference is "
-             f"{b['diff'] * 100:.0f} percentage points (95% CI {b['lo'] * 100:.0f} to {b['hi'] * 100:.0f}). "
-             f"Fisher's exact check: p = {fmt_p(b['p_fisher'])}.")
-    if b["min_cell"] < 10:
-        st.caption(f"The smallest cell has {b['min_cell']} countries, below the usual rule of thumb of 10 "
-                   "for the z-test, so Fisher's exact test is shown as a check.")
-    st.warning("Groups were not randomly assigned. Countries were already in the richer or poorer half, so a "
-               "significant result shows the groups differ. It does not by itself prove that income caused "
-               "the difference, the way a true randomized A/B test would.")
-    with st.expander("What the p-value is not"):
-        st.write("It is not the probability that H0 is true or that the gap is due to chance, and it does not "
-                 "say how big the gap is: the size comes from the percentage-point difference and its "
-                 "confidence interval. It uses 2024 only, so it cannot say how the gap has changed over time.")
-
-    st.divider()
-    st.caption("Limitations: countries repeat across years in the ANOVA; incomplete rows were dropped, which "
-               "underrepresents poorer and less documented countries and early years; quartiles are my own "
-               "splits of GDP per capita, not official World Bank income classes; results show association, "
-               "not causation.")
+    with st.container(border=True):
+        st.subheader("Median under-5 mortality by decade and GDP quartile")
+        pivot = view.pivot_table(index="gdp_quartile", columns="decade", values="child_mortality",
+                                 aggfunc="median", observed=True)
+        heat_df = pivot.reset_index().melt(id_vars="gdp_quartile", var_name="decade",
+                                           value_name="median_mortality").dropna()
+        heat_df["gdp_quartile"] = heat_df["gdp_quartile"].astype(str)
+        heat_df["decade"] = heat_df["decade"].astype(int).astype(str) + "s"
+        threshold = heat_df["median_mortality"].max() * 0.55
+        base = alt.Chart(heat_df).encode(
+            x=alt.X("decade:O", title="Decade", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("gdp_quartile:O", sort=QUARTILES, title="GDP per capita quartile"),
+        )
+        rect = base.mark_rect(cornerRadius=4).encode(
+            color=alt.Color("median_mortality:Q", title="Median mortality",
+                            scale=alt.Scale(scheme="yelloworangered")),
+            tooltip=[alt.Tooltip("gdp_quartile:O", title="Quartile"),
+                     alt.Tooltip("decade:O", title="Decade"),
+                     alt.Tooltip("median_mortality:Q", title="Median mortality", format=".1f")],
+        )
+        text = base.mark_text(fontSize=13, fontWeight="bold").encode(
+            text=alt.Text("median_mortality:Q", format=".0f"),
+            color=alt.condition(alt.datum.median_mortality > threshold,
+                                alt.value("white"), alt.value("black")),
+        )
+        st.altair_chart(style(rect + text, 260), use_container_width=True)
