@@ -1,5 +1,4 @@
 import altair as alt
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -45,8 +44,6 @@ def style(chart, height=320):
 @st.cache_data
 def load_data():
     df = pd.read_csv("clean_data.csv")
-    df["log_gdp"] = np.log(df["gdp_per_capita"])
-    df["log_mortality"] = np.log(df["child_mortality"])
     df["decade"] = (df["year"] // 10) * 10
     df["gdp_quartile"] = pd.qcut(df["gdp_per_capita"], 4, labels=QUARTILES)
     return df
@@ -130,7 +127,7 @@ with tab_dist:
     labels = {"child_mortality": "Under-5 mortality (per 1,000)",
               "life_expectancy": "Life expectancy (years)",
               "gdp_per_capita": "GDP per capita (US$)",
-              "log_gdp": "Log GDP per capita"}
+              "population": "Population"}
     with st.container(border=True):
         var = st.selectbox("Variable", list(labels), format_func=lambda v: labels[v])
         x = view[var]
@@ -182,15 +179,16 @@ with tab_dist:
 # relationships
 with tab_rel:
     with st.container(border=True):
-        st.subheader("Log GDP per capita vs life expectancy")
-        scatter = alt.Chart(view[["Country Name", "year", "decade", "log_gdp", "life_expectancy"]]).mark_circle(
+        st.subheader("GDP per capita vs life expectancy")
+        scatter = alt.Chart(view[["Country Name", "year", "decade", "gdp_per_capita", "life_expectancy"]]).mark_circle(
             size=40, opacity=0.55).encode(
-            x=alt.X("log_gdp:Q", title="Log GDP per capita", scale=alt.Scale(zero=False)),
+            x=alt.X("gdp_per_capita:Q", title="GDP per capita (US$, log scale)",
+                    scale=alt.Scale(type="log"), axis=alt.Axis(format="~s")),
             y=alt.Y("life_expectancy:Q", title="Life expectancy (years)", scale=alt.Scale(zero=False)),
             color=alt.Color("decade:O", title="Decade", scale=alt.Scale(scheme="viridis")),
             tooltip=[alt.Tooltip("Country Name:N", title="Country"),
                      alt.Tooltip("year:Q", title="Year", format="d"),
-                     alt.Tooltip("log_gdp:Q", title="Log GDP", format=".2f"),
+                     alt.Tooltip("gdp_per_capita:Q", title="GDP per capita", format=",.0f"),
                      alt.Tooltip("life_expectancy:Q", title="Life expectancy", format=".1f")],
         ).interactive()
         st.altair_chart(style(scatter, 420), use_container_width=True)
