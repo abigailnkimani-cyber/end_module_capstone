@@ -23,7 +23,6 @@ An end-to-end data project that examines how national income relates to under-5 
 │   └── clean_data.csv          # Cleaned, merged dataset used by the app
 ├── docs/
 │   └── end_module_capstone.pdf # Presentation slides and project overview
-├── requirements.txt
 └── README.md
 
 ---
@@ -54,7 +53,7 @@ Steps carried out in the notebook:
 - **Descriptive statistics:** medians are used throughout because the indicators are skewed.
 - **Distributions:** histograms and box plots of each indicator by GDP quartile.
 - **Relationships:** scatter plots and correlations between income, child mortality and life expectancy 
-- **Hypothesis tests:** One-way ANOVA comparing life expectancy across GDP quartiles, $p < 0.05$). H0: mean log child mortality is the same in all four quartiles.**.
+- **Hypothesis tests:** Friedman test to test GDP Per capita accross decades.
 
 ### 3.5 Evaluation
 Key findings:
@@ -111,7 +110,7 @@ To explore the analysis, open the notebook with `jupyter notebook capstone.ipynb
 
 ## 6. Deploying to Streamlit Community Cloud
 
-Live app: (https://endmodulecapstone-gbrncegpkwpvqvjkjukejb.streamlit.app/)
+Live app: (https://endmodulecapstone-v7rmdwqueii9oakzzewa5h.streamlit.app/)
 
 ---
 
@@ -126,12 +125,11 @@ seaborn
 scipy
 ```
 ## 8. Article
-Read the full write-up on [Substack](https://abnk.substack.com/p/do-richer-countries-really-keep-more?r=6xvpog&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true).
-
+Read the full write-up on (https://abnk.substack.com/p/do-richer-countries-really-keep-more)
 ---
 
 ## 9. Presentation
-Presentation slides: https://eu.wps.com/cms/docs/d/cbOakhgqDf8cJXMu?platform=pc&refer=copylink
+Presentation slides: https://eu.wps.com/cms/docs/d/cbOakrHO9IetwyGi?platform=pc&refer=copylink
 
 ---
 
