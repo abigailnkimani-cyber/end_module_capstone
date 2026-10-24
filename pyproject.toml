@@ -2,3 +2,12 @@
 dev = [
     "scikit-posthocs>=0.17.1",
 ]
+[project]
+name = "end-module-capstone"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit",
+    "pandas",
+    "plotly",
+]
