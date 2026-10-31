@@ -10,4 +10,5 @@ dependencies = [
     "streamlit",
     "pandas",
     "plotly",
+    "altair>=6.2.2",
 ]
